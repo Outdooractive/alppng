@@ -1,0 +1,262 @@
+#!/usr/bin/env python2.6
+
+'''--- Usage:  
+
+inplace_green2transp.py  <dir>
+inplace_green2transp.py -v <dir>
+inplace_green2transp.py -q <dir>
+inplace_green2transp.py -f <filename>
+
+This program modifies all PNGs contained in <dir> and in its
+sub-directories.  -v  and  -q are just verbosity/quiet options.
+
+Two actions:
+ 1. Transform: pure green (tolerance 5%) => transparent
+ 2. After 1., delete fully transparent tiles.
+
+ATTENTION: files are directly modified. No safety copy, no undo.
+
+guillaume.lathoud@alpstein.de
+TRAC ticket #7524
+'''
+
+import cStringIO, datetime, os, glob, re, subprocess, sys
+from alppng import *
+
+CONVERT  = 'convert'
+PNGNQ    = 'pngnq'
+PNGCRUSH = 'pngcrush'
+
+CONVERT_CMD_TMPL  = CONVERT + " {in_filename} -alpha set -fuzz 5% -transparent '#00FF00' {out_filename}"
+
+ALPPNG_TOLERANCE = 5
+
+def convert( in_filename ):
+
+    out_filename = in_filename
+
+    subprocess.check_call( CONVERT_CMD_TMPL.format( **vars()), shell=True )  # Overwrite
+
+def pngnq( in_filename ):
+
+    h,t = os.path.splitext( in_filename )
+    nq  = h + '-nq8' + t
+
+    subprocess.check_call( ' '.join( [ PNGNQ, in_filename ] ), shell=True )
+    os.rename( nq, in_filename )  # Overwrite
+    
+def pngcrush( in_filename ):
+
+    h,t = os.path.splitext( in_filename )
+    crush = h + '-crush' + t
+
+    subprocess.check_call( ' '.join( [ PNGCRUSH, in_filename, crush ] ), shell=True )
+    os.rename( crush, in_filename )  # Overwrite
+
+
+def remove_if_plte_trns_fully_transparent( png_or_filename, n_removed = 0, vspur = False, verbosity = 0, i = 0, n = 0, eta_str = '' ):
+
+    '''Input: png object or filename string
+
+    Output: pair tuple: (removed, n_removed)
+    '''
+
+    png = alppng.Png( png_or_filename ) if isinstance( png_or_filename, str ) else png_or_filename
+
+    # Action 2: check whether the result is fully transparent
+
+    removed = False
+    
+    if alppng.Png_has_plte_trns_and_is_fully_transparent( png ):
+        
+        # Yes: remove the file
+
+        filename = png[ alppng.FILENAME ]
+        
+        os.remove( filename )
+        removed = True
+        
+        if vspur:
+            s = '{i}/{n}{eta_str}: removed fully transparent file "{filename}"'.format( **vars() ) + (' ' * 10)
+            if verbosity > 1:
+                print s
+            else:
+                print s + '\r',
+
+    return removed,( n_removed + (1 if removed else 0))
+    
+
+def print_usage_and_exit(out = sys.stdout, code = 0):
+    print >> out
+    print >> out, __doc__
+    sys.exit(code)
+
+def ETA( start_datetime, ncomptotal, count ):
+    delta_t = datetime.datetime.now() - start_datetime
+    delta_t_sec = delta_t.days * 86400 + delta_t.seconds + delta_t.microseconds * 1e-6
+    
+    remaining_sec = delta_t_sec * 1.0 / count * ( ncomptotal - count )
+    remaining     = datetime.timedelta( 0, remaining_sec )
+    
+    return datetime.datetime.now() + remaining
+
+def main( argv, png_rx_str = r'\.[pP][nN][gG]$', pure_green = (0, 255, 0) ):
+
+    argc = len( argv )
+
+    if argc < 2  or  argc > 3  or  (argc == 3  and  argv[ 1 ] != '-v'  and  argv[ 1 ] != '-q'):
+        print_usage_and_exit()
+    
+    verbosity = 1  # standard verbosity (not too much so that performance remains good)
+
+    filenamelist = None
+    
+    if argc == 2:
+        rw_dir = argv[ 1 ]
+
+    elif argc == 3:
+        rw_dir = argv[ 2 ]
+        if argv[ 1 ] == '-q':
+            verbosity = 0        # no verbosity at all
+        elif argv[ 1 ] == '-v':
+            verbosity = 2        # full verbosity (one print for each file)
+        elif argv[ 1 ] == '-f':
+            filenamelist = [ argv[ 2 ], ]
+        else:
+            print_usage_and_exit()
+
+    else:
+        print_usage_and_exit()
+
+    #
+    
+    png_rx = re.compile( png_rx_str )
+
+    # Read the list of png files
+
+    if not filenamelist:
+        
+        filenamelist = []
+
+        for root, dirs, files in os.walk( rw_dir ):
+            for name in files:
+                if None == png_rx.search( name ):
+                    continue
+                filenamelist.append( os.path.join( root, name ) )
+
+    #
+            
+    n = len( filenamelist )
+
+    if verbosity > 0:
+        print
+        print 'Found {n} PNG files in: {rw_dir}'.format( **vars() )
+        print
+         
+    # Process the files
+    
+    start_datetime = datetime.datetime.now()
+    eta_str = ''
+
+    n_removed = 0   # Counter for action 2
+
+    i = 0
+    while i < n:
+
+        filename = filenamelist[ i ]
+        i += 1
+
+        if not (i % 100):
+            eta_datetime = ETA( start_datetime, n, i )
+            eta_str = ' (ETA: {0})'.format( eta_datetime.strftime( '%d.%m.%Y %H:%M:%S' ))
+
+        vspur = (verbosity > 1)  or  ((verbosity > 0)  and  (not (i % 100)))
+
+        #
+
+        png = alppng.Png( filename )
+        if not alppng.Png_has_plte_chunk( png ):
+
+            # Fallback: try image magick (mainly for tiles at the border)
+            # Inconvenient: slower than just modifying the palette
+
+            convert( filename )
+            pngnq( filename )
+            pngcrush( filename )
+
+            print 'xxx slow-modified {filename}'.format( **vars() )
+                        
+            if vspur:
+                s = '{i}/{n}{eta_str}: modified file (using Image Magick, PNGNQ & PNGCRUSH): "{filename}"'.format( **vars() ) + (' ' * 10)
+                if verbosity > 1:
+                    print s
+                else:
+                    print s + '\r',
+
+            removed, n_removed = remove_if_plte_trns_fully_transparent( filename, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
+            
+            continue
+        
+        if not alppng.Png_plte_has( png, pure_green, tolerance = ALPPNG_TOLERANCE ):    # Should be fast
+
+            removed, n_removed = remove_if_plte_trns_fully_transparent( png, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
+            if removed:
+                continue
+
+            if vspur:
+                s = '{i}/{n}{eta_str}: skipped file (palette does not have {pure_green}, and file is not fully transparent): "{filename}"'.format( **vars() ) + (' ' * 10)
+                if verbosity > 1:
+                    print s
+                else:
+                    print s + '\r',
+            continue
+
+        # Read the PNG file (1 disk access)
+
+        csio = cStringIO.StringIO()
+        csio.write( open( filename, 'rb' ).read() )
+
+        # Do the two operations in memory (no disk access)
+
+        png = alppng.Png( csio )
+        modified = alppng.Png_set_replace_plte_colour( png, pure_green, (255,255,255), tolerance = ALPPNG_TOLERANCE )
+        alppng.Png_set_make_sure_plte_trns( png, modified, 0 )
+
+        # Is the resulting PNG fully transparent ?
+
+        removed, n_removed = remove_if_plte_trns_fully_transparent( png, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
+        if removed:
+            # Yes: remove it (Action 2., 1 disk access)
+            continue
+                
+        # No: Write out the result (1 disk access)
+
+        open( filename, 'wb' ).write( csio.getvalue() )
+
+        if vspur:
+            s = '{i}/{n}{eta_str}: modified file "{filename}"'.format( **vars() ) + (' ' * 10)
+            if verbosity > 1:
+                print s
+            else:
+                print s + '\r',
+
+    end_datetime = datetime.datetime.now()
+    delta_t      = end_datetime - start_datetime
+    delta_t_sec  = delta_t.days * 86400 + delta_t.seconds + delta_t.microseconds * 1e-6
+    
+    if verbosity > 0:
+        print
+        print
+        print 'Done.'
+
+        if n > 0:
+            print 'Processed {n} tiles in {delta_t_sec:.2f} second(s)'.format( **vars() )
+            print 'Speed was: {0:.5} tile(s)/second.'.format( n / delta_t_sec )
+            print 'Removed {n_removed} fully transparent tiles'.format( **vars() )
+
+        print ''
+    
+if __name__ == '__main__':
+    main( sys.argv )
+
+
