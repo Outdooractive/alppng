@@ -21,6 +21,7 @@ TRAC ticket #7524
 '''
 
 import cStringIO, datetime, os, glob, re, subprocess, sys
+from optparse import OptionParser
 from alppng import *
 
 CONVERT  = 'convert'
@@ -102,31 +103,61 @@ def ETA( start_datetime, ncomptotal, count ):
 
 def main( argv, png_rx_str = r'\.[pP][nN][gG]$', pure_green = (0, 255, 0) ):
 
-    argc = len( argv )
+    parser = OptionParser(usage="""usage: %prog [options] file|directory
 
-    if argc < 2  or  argc > 3  or  (argc == 3  and  argv[ 1 ] != '-v'  and  argv[ 1 ] != '-q'):
-        print_usage_and_exit()
-    
+    Examples:
+
+    inplace_green2transp.py  <dir>
+    inplace_green2transp.py -v <dir>
+    inplace_green2transp.py -q <dir>
+    inplace_green2transp.py -f <filename>
+
+    This program modifies all PNGs contained in <dir> and in its
+    sub-directories.  -v  and  -q are just verbosity/quiet options.
+
+    Two actions:
+    1. Transform: pure green (tolerance 5%) => transparent
+    2. After 1., delete fully transparent tiles.
+
+    ATTENTION: files are directly modified. No safety copy, no undo.
+
+    guillaume.lathoud@alpstein.de
+    TRAC ticket #7524
+    """)
+
+    parser.add_option("-q", "--quiet",
+        action="store_true", dest="quiet", default=False,
+        help='''don't print any status messages to stdout except errors.''')
+
+    parser.add_option("-v", "--verbose",
+        action="store_true", dest="verbose", default=False,
+        help='''print more status messages to stdout.''')
+
+    parser.add_option("-f", "--file",
+        action="store_true", dest="file", default=False,
+        help='''the parameter is a file, not a directory.''')
+
+    (options, args) = parser.parse_args()
+    argc = len( args )
+
+    if argc == 0:
+        parser.print_help()
+        sys.exit(1)
+
+
     verbosity = 1  # standard verbosity (not too much so that performance remains good)
 
     filenamelist = None
     
-    if argc == 2:
-        rw_dir = argv[ 1 ]
+    rw_dir = args[ 0 ]
 
-    elif argc == 3:
-        rw_dir = argv[ 2 ]
-        if argv[ 1 ] == '-q':
-            verbosity = 0        # no verbosity at all
-        elif argv[ 1 ] == '-v':
-            verbosity = 2        # full verbosity (one print for each file)
-        elif argv[ 1 ] == '-f':
-            filenamelist = [ argv[ 2 ], ]
-        else:
-            print_usage_and_exit()
+    if options.verbose:
+        verbosity = 2        # full verbosity (one print for each file)
+    elif options.quiet:
+         verbosity = 0        # no verbosity at all
 
-    else:
-        print_usage_and_exit()
+    if options.file:
+        filenamelist = [ args[ 0 ], ]
 
     #
     
