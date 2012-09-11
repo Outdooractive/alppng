@@ -1,25 +1,5 @@
 #!/usr/bin/env python2.6
 
-'''--- Usage:  
-
-inplace_green2transp.py  <dir>
-inplace_green2transp.py -v <dir>
-inplace_green2transp.py -q <dir>
-inplace_green2transp.py -f <filename>
-
-This program modifies all PNGs contained in <dir> and in its
-sub-directories.  -v  and  -q are just verbosity/quiet options.
-
-Two actions:
- 1. Transform: pure green (tolerance 5%) => transparent
- 2. After 1., delete fully transparent tiles.
-
-ATTENTION: files are directly modified. No safety copy, no undo.
-
-guillaume.lathoud@alpstein.de
-TRAC ticket #7524
-'''
-
 import cStringIO, datetime, os, glob, re, subprocess, sys
 from optparse import OptionParser
 from alppng import *
@@ -55,14 +35,14 @@ def pngcrush( in_filename ):
     os.rename( crush, in_filename )  # Overwrite
 
 
-def remove_if_plte_trns_fully_transparent( png_or_filename, n_removed = 0, vspur = False, verbosity = 0, i = 0, n = 0, eta_str = '' ):
+def remove_if_plte_trns_fully_transparent( filename, png, n_removed = 0, vspur = False, verbosity = 0, i = 0, n = 0, eta_str = '' ):
 
     '''Input: png object or filename string
 
     Output: pair tuple: (removed, n_removed)
     '''
 
-    png = alppng.Png( png_or_filename ) if isinstance( png_or_filename, str ) else png_or_filename
+    png = alppng.Png( filename ) if png == None else png
 
     # Action 2: check whether the result is fully transparent
 
@@ -72,8 +52,6 @@ def remove_if_plte_trns_fully_transparent( png_or_filename, n_removed = 0, vspur
         
         # Yes: remove the file
 
-        filename = png[ alppng.FILENAME ]
-        
         os.remove( filename )
         removed = True
         
@@ -224,13 +202,13 @@ def main( argv, png_rx_str = r'\.[pP][nN][gG]$', pure_green = (0, 255, 0) ):
                 else:
                     print s + '\r',
 
-            removed, n_removed = remove_if_plte_trns_fully_transparent( filename, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
+            removed, n_removed = remove_if_plte_trns_fully_transparent( filename, None, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
             
             continue
         
         if not alppng.Png_plte_has( png, pure_green, tolerance = ALPPNG_TOLERANCE ):    # Should be fast
 
-            removed, n_removed = remove_if_plte_trns_fully_transparent( png, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
+            removed, n_removed = remove_if_plte_trns_fully_transparent( filename, png, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
             if removed:
                 continue
 
@@ -255,7 +233,7 @@ def main( argv, png_rx_str = r'\.[pP][nN][gG]$', pure_green = (0, 255, 0) ):
 
         # Is the resulting PNG fully transparent ?
 
-        removed, n_removed = remove_if_plte_trns_fully_transparent( png, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
+        removed, n_removed = remove_if_plte_trns_fully_transparent( filename, png, n_removed = n_removed, vspur = vspur, verbosity = verbosity, i = i, n = n, eta_str = eta_str )
         if removed:
             # Yes: remove it (Action 2., 1 disk access)
             continue

@@ -13,7 +13,7 @@ guillaume.lathoud@alpstein.de
 Trac tickets #7665 and #7524
 '''
 
-import cStringIO, glob, math, operator, os, shutil, StringIO, zlib
+import cStringIO, glob, math, operator, os, shutil, StringIO, sys, zlib
 
 FILE     = 'file'
 FILENAME = 'filename'
@@ -67,9 +67,13 @@ IDAT_SCANLINES    = '___idat_scanlines___'
 class Png( dict ):
 
     def __init__( self, file_or_string ):
-        self[ FILE ]     = open( file_or_string, 'rb' )  if  isinstance( file_or_string, str )  else  file_or_string
-        self[ FILENAME ] = self[ FILE ].name  if   hasattr( self[ FILE ], 'name' )   else  None
-            
+        if  isinstance( file_or_string, str ):
+            self[ FILE ] = open( file_or_string, 'rb' )
+            self[ FILENAME ] = self[ FILE ].name  if hasattr( self[ FILE ], 'name' ) else None
+        else:
+            self[ FILE ] = file_or_string
+            self[ FILENAME ] = None
+
         self[ FILE ].seek( 0 )
         sig = self[ FILE ].read( len( PNGSIG ) )
         if PNGSIG != sig:
