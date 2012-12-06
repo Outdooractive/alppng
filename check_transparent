@@ -10,8 +10,10 @@ def main( argv ):
 
     Examples:
 
-    check_semitransparent <filename>
+    check_transparent <filename>
 
+    Checks if a png image file contains some transparency.
+    Returns 1 if yes, 0 otherwise.
     """)
 
     (options, args) = parser.parse_args()
