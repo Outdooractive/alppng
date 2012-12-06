@@ -1,0 +1,98 @@
+#!/usr/bin/env python2.6
+
+import cStringIO, datetime, os, glob, re, subprocess, sys
+from optparse import OptionParser
+from alppng import *
+
+def main( argv ):
+
+    parser = OptionParser(usage="""usage: %prog file
+
+    Examples:
+
+    check_semitransparent <filename>
+
+    """)
+
+    (options, args) = parser.parse_args()
+    argc = len( args )
+
+    if argc == 0:
+        parser.print_help()
+        sys.exit(1)
+
+    filename = args[ 0 ]
+
+    png     = alppng.Png( filename )
+    ihdr    = alppng.Png_get_ihdr_chunk( png )
+    npixels = ihdr[ alppng.WIDTH ] * ihdr[ alppng.HEIGHT ]
+
+    try:
+
+        b = alppng.Png_has_plte_index_and_is_transparent( png )
+
+        if b == True:   # Transparent
+            sys.exit(1)
+
+        if b == False:  # Opaque
+            sys.exit(0)
+
+    except AssertionError, e:    # e.g. when filter_type != 0   (rare)
+        pass
+
+    # At this point, ALPPNG says : "may be opaque, may be transparent, I do not know".
+
+    IDENTIFY = '/usr/bin/identify'
+    if not os.path.exists( IDENTIFY ):
+        r = my_exec( '/usr/bin/which identify' )
+        IDENTIFY = ( r[0] if ( r[2] == 0 ) else None )
+
+    rx_alpha = re.compile( '^\s*[Aa]lpha\s*:\s*(\d+)-bit\W', re.MULTILINE | re.IGNORECASE )
+
+    # Try the fallback: Image Magick
+    if not IDENTIFY:
+        sys.exit(0)
+
+    out,err,code = my_exec( IDENTIFY + ' -verbose ' + filename, True )
+
+    if code != 0:
+        sys.exit(0)
+
+    mo_alpha = rx_alpha.search( out )
+
+    if mo_alpha == None:
+        # Image Magick says: is opaque.
+        sys.exit(0)
+
+    # Now we are sure that the image has an alpha channel.
+
+    # Let us check the histogram first, maybe we can say right away that the image is fully transparent.
+
+    rx_full_transp = re.compile( r'Histogram\s*:[\s\r\n]*{npixels}\s*:\s+\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)\s+#[a-zA-Z0-9]{{6,6}}00\s+'.format( **vars() ) )
+
+    if None == rx_full_transp.search( out ):
+
+        # Now let us check the rest of the information, to detect non-transparent pixels.
+
+        rx_alpha_opaque_1bit = re.compile( '^[\s\r\n]*Alpha[\s\r\n]*:[\s\r\n]*min[\s\r\n]*:[\s\r\n]*0[\s\r\n]*\(0\)[\s\r\n]*max[\s\r\n]*:[\s\r\n]*0[\s\r\n]*\(0\)[\s\r\n]+', re.MULTILINE | re.IGNORECASE )
+        rx_alpha_opaque = re.compile( '^[\s\r\n]*Alpha[\s\r\n]*:[\s\r\n]*min[\s\r\n]*:[\s\r\n]*255[\s\r\n]*\(1\)[\s\r\n]*max[\s\r\n]*:[\s\r\n]*255[\s\r\n]*\(1\)[\s\r\n]+', re.MULTILINE | re.IGNORECASE )
+        rx_alpha_opaque_2 = re.compile( '^[\s\r\n]*Opacity[\s\r\n]*:[\s\r\n]*min[\s\r\n]*:[\s\r\n]*0[\s\r\n]*\(0\)[\s\r\n]*max[\s\r\n]*:[\s\r\n]*0[\s\r\n]*\(0\)[\s\r\n]+', re.MULTILINE | re.IGNORECASE )
+
+        im_says_opaque = False
+        if mo_alpha.group(1) == '1':   # 1-bit case
+            im_says_opaque = rx_alpha_opaque_1bit.search( out ) != None
+
+        if not im_says_opaque:
+           im_says_opaque = (rx_alpha_opaque.search( out ) != None) or (rx_alpha_opaque_2.search( out ) != None)
+
+        if im_says_opaque:
+            # Image Magick says: has opaque content.
+            # (has alpha channel with: min = max = 255
+            # or opacity with: min = max = 0).
+            sys.exit(0)
+
+    sys.exit(1)
+
+
+if __name__ == '__main__':
+    main( sys.argv )
