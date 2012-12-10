@@ -4,6 +4,20 @@ import cStringIO, datetime, os, glob, re, subprocess, sys
 from optparse import OptionParser
 from alppng import *
 
+def my_exec( cmd, no_assert = False ):
+    pipe = subprocess.Popen( ( cmd if isinstance( cmd, str ) else ' '.join( cmd ) ),
+                                     shell=True,
+                                     stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE )
+    ret = ( pipe.stdout.read(), pipe.stderr.read(), pipe.wait(), )
+
+    if not no_assert:
+        assert ret[2] == 0
+
+    return ret
+
+
 def main( argv ):
 
     parser = OptionParser(usage="""usage: %prog file
