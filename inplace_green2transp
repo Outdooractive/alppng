@@ -191,7 +191,7 @@ def main( argv, png_rx_str = r'\.[pP][nN][gG]$', pure_green = (0, 255, 0) ):
 
             convert( filename )
             pngnq( filename )
-            pngcrush( filename )
+            # pngcrush( filename )
 
             print 'xxx slow-modified {filename}'.format( **vars() )
                         
