@@ -193,7 +193,7 @@ def main( argv, png_rx_str = r'\.[pP][nN][gG]$', pure_green = (0, 255, 0) ):
             pngnq( filename )
             # pngcrush( filename )
 
-            print 'xxx slow-modified {filename}'.format( **vars() )
+            # print 'xxx slow-modified {filename}'.format( **vars() )
                         
             if vspur:
                 s = '{i}/{n}{eta_str}: modified file (using Image Magick, PNGNQ & PNGCRUSH): "{filename}"'.format( **vars() ) + (' ' * 10)
